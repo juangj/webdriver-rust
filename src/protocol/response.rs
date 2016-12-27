@@ -1,12 +1,12 @@
 use rustc_serialize::json;
 
-use common::{Nullable, Date};
+use protocol::common::{Nullable, Date};
 use cookie;
 use time;
 use std::collections::BTreeMap;
 
 #[derive(Debug)]
-pub enum WebDriverResponse {
+pub enum Response {
     NewSession(NewSessionResponse),
     DeleteSession,
     WindowSize(WindowSizeResponse),
@@ -17,17 +17,17 @@ pub enum WebDriverResponse {
     Void
 }
 
-impl WebDriverResponse {
+impl Response {
     pub fn to_json_string(self) -> String {
         match self {
-            WebDriverResponse::NewSession(x) => json::encode(&x),
-            WebDriverResponse::DeleteSession => Ok("{}".to_string()),
-            WebDriverResponse::WindowSize(x) => json::encode(&x),
-            WebDriverResponse::WindowPosition(x) => json::encode(&x),
-            WebDriverResponse::ElementRect(x) => json::encode(&x),
-            WebDriverResponse::Cookie(x) => json::encode(&x),
-            WebDriverResponse::Generic(x) => json::encode(&x),
-            WebDriverResponse::Void => Ok("{}".to_string())
+            Response::NewSession(x) => json::encode(&x),
+            Response::DeleteSession => Ok("{}".to_string()),
+            Response::WindowSize(x) => json::encode(&x),
+            Response::WindowPosition(x) => json::encode(&x),
+            Response::ElementRect(x) => json::encode(&x),
+            Response::Cookie(x) => json::encode(&x),
+            Response::Generic(x) => json::encode(&x),
+            Response::Void => Ok("{}".to_string())
         }.unwrap()
     }
 }

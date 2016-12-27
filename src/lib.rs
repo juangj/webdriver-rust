@@ -9,12 +9,9 @@ extern crate cookie;
 extern crate time;
 
 #[macro_use] pub mod macros;
-pub mod httpapi;
-pub mod command;
-pub mod common;
+pub mod protocol;
 pub mod error;
 pub mod server;
-pub mod response;
 
 
 #[cfg(test)]

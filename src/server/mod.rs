@@ -1,59 +1,60 @@
-use std::io::Read;
-use std::marker::PhantomData;
-use std::net::SocketAddr;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Mutex;
-use std::thread;
+mod httpapi;
+mod message;
 
 use hyper::header::ContentType;
 use hyper::method::Method;
-use hyper::Result;
-use hyper::server::{Handler, Listening, Request, Response, Server};
 use hyper::status::StatusCode;
 use hyper::uri::RequestUri::AbsolutePath;
+use hyper;
+use protocol::command::Command;
+use protocol::endpoints::{ExtensionEndpoint, VoidExtensionEndpoint};
+use protocol::response::Response;
+use self::httpapi::HttpApi;
+use self::message::Message;
+use std::io::Read;
+use std::marker::PhantomData;
+use std::net::SocketAddr;
+use std::sync::Mutex;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
+use super::error::{WebDriverResult, WebDriverError, ErrorStatus};
 
-use command::{WebDriverMessage, WebDriverCommand};
-use error::{WebDriverResult, WebDriverError, ErrorStatus};
-use httpapi::{WebDriverHttpApi, WebDriverExtensionRoute, VoidWebDriverExtensionRoute};
-use response::WebDriverResponse;
-
-enum DispatchMessage<U: WebDriverExtensionRoute> {
-    HandleWebDriver(WebDriverMessage<U>, Sender<WebDriverResult<WebDriverResponse>>),
-    Quit
+enum DispatchMessage<U: ExtensionEndpoint> {
+    HandleWebDriver(Message<U>, Sender<WebDriverResult<Response>>),
+    Quit,
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Session {
-    id: String
+    id: String,
 }
 
 impl Session {
     fn new(id: String) -> Session {
-        Session {
-            id: id
-        }
+        Session { id: id }
     }
 }
 
-pub trait WebDriverHandler<U: WebDriverExtensionRoute=VoidWebDriverExtensionRoute> : Send {
-    fn handle_command(&mut self, session: &Option<Session>, msg: WebDriverMessage<U>) -> WebDriverResult<WebDriverResponse>;
+pub trait Handler<U: ExtensionEndpoint = VoidExtensionEndpoint>: Send {
+    fn handle_command(&mut self,
+                      session: &Option<Session>,
+                      msg: Message<U>)
+                      -> WebDriverResult<Response>;
     fn delete_session(&mut self, session: &Option<Session>);
 }
 
-struct Dispatcher<T: WebDriverHandler<U>,
-                  U: WebDriverExtensionRoute> {
+struct Dispatcher<T: Handler<U>, U: ExtensionEndpoint> {
     handler: T,
     session: Option<Session>,
     extension_type: PhantomData<U>,
 }
 
-impl <T: WebDriverHandler<U>,
-      U: WebDriverExtensionRoute> Dispatcher<T,U> {
-    fn new(handler: T) -> Dispatcher<T,U> {
+impl<T: Handler<U>, U: ExtensionEndpoint> Dispatcher<T, U> {
+    fn new(handler: T) -> Dispatcher<T, U> {
         Dispatcher {
             handler: handler,
             session: None,
-            extension_type: PhantomData
+            extension_type: PhantomData,
         }
     }
 
@@ -63,16 +64,16 @@ impl <T: WebDriverHandler<U>,
                 Ok(DispatchMessage::HandleWebDriver(msg, resp_chan)) => {
                     let resp = match self.check_session(&msg) {
                         Ok(_) => self.handler.handle_command(&self.session, msg),
-                        Err(e) => Err(e)
+                        Err(e) => Err(e),
                     };
 
                     match resp {
-                        Ok(WebDriverResponse::NewSession(ref new_session)) => {
+                        Ok(Response::NewSession(ref new_session)) => {
                             self.session = Some(Session::new(new_session.sessionId.clone()));
-                        },
-                        Ok(WebDriverResponse::DeleteSession) => {
+                        }
+                        Ok(Response::DeleteSession) => {
                             self.delete_session();
-                        },
+                        }
                         Err(ref x) if x.delete_session() => {
                             self.delete_session();
                         }
@@ -82,11 +83,11 @@ impl <T: WebDriverHandler<U>,
                     if resp_chan.send(resp).is_err() {
                         error!("Sending response to the main thread failed");
                     };
-                },
+                }
                 Ok(DispatchMessage::Quit) => {
                     break;
-                },
-                Err(_) => panic!("Error receiving message in handler")
+                }
+                Err(_) => panic!("Error receiving message in handler"),
             }
         }
     }
@@ -97,50 +98,50 @@ impl <T: WebDriverHandler<U>,
         self.session = None;
     }
 
-    fn check_session(&self, msg: &WebDriverMessage<U>) -> WebDriverResult<()> {
+    fn check_session(&self, msg: &Message<U>) -> WebDriverResult<()> {
         match msg.session_id {
             Some(ref msg_session_id) => {
                 match self.session {
                     Some(ref existing_session) => {
                         if existing_session.id != *msg_session_id {
-                            Err(WebDriverError::new(
-                                ErrorStatus::InvalidSessionId,
-                                format!("Got unexpected session id {} expected {}",
-                                        msg_session_id,
-                                        existing_session.id)))
+                            Err(WebDriverError::new(ErrorStatus::InvalidSessionId,
+                                                    format!("Got unexpected session id {} \
+                                                             expected {}",
+                                                            msg_session_id,
+                                                            existing_session.id)))
                         } else {
                             Ok(())
                         }
-                    },
-                    None => Ok(())
+                    }
+                    None => Ok(()),
                 }
-            },
+            }
             None => {
                 match self.session {
                     Some(_) => {
                         match msg.command {
-                            WebDriverCommand::Status => Ok(()),
-                            WebDriverCommand::NewSession(_) => {
-                                Err(WebDriverError::new(
-                                    ErrorStatus::SessionNotCreated,
-                                    "Session is already started"))
-                            },
+                            Command::Status => Ok(()),
+                            Command::NewSession(_) => {
+                                Err(WebDriverError::new(ErrorStatus::SessionNotCreated,
+                                                        "Session is already started"))
+                            }
                             _ => {
-                                //This should be impossible
+                                // This should be impossible
                                 error!("Got a message with no session id");
-                                Err(WebDriverError::new(
-                                    ErrorStatus::UnknownError,
-                                    "Got a command with no session?!"))
+                                Err(WebDriverError::new(ErrorStatus::UnknownError,
+                                                        "Got a command with no session?!"))
                             }
                         }
-                    },
+                    }
                     None => {
                         match msg.command {
-                            WebDriverCommand::NewSession(_) => Ok(()),
-                            WebDriverCommand::Status => Ok(()),
-                            _ => Err(WebDriverError::new(
-                                ErrorStatus::InvalidSessionId,
-                                "Tried to run a command before creating a session"))
+                            Command::NewSession(_) => Ok(()),
+                            Command::Status => Ok(()),
+                            _ => {
+                                Err(WebDriverError::new(ErrorStatus::InvalidSessionId,
+                                                        "Tried to run a command before creating \
+                                                         a session"))
+                            }
                         }
                     }
                 }
@@ -149,22 +150,22 @@ impl <T: WebDriverHandler<U>,
     }
 }
 
-struct HttpHandler<U: WebDriverExtensionRoute> {
+struct HttpHandler<U: ExtensionEndpoint> {
     chan: Mutex<Sender<DispatchMessage<U>>>,
-    api: Mutex<WebDriverHttpApi<U>>
+    api: Mutex<HttpApi<U>>,
 }
 
-impl <U: WebDriverExtensionRoute> HttpHandler<U> {
-    fn new(api: WebDriverHttpApi<U>, chan: Sender<DispatchMessage<U>>) -> HttpHandler<U> {
+impl<U: ExtensionEndpoint> HttpHandler<U> {
+    fn new(api: HttpApi<U>, chan: Sender<DispatchMessage<U>>) -> HttpHandler<U> {
         HttpHandler {
             chan: Mutex::new(chan),
-            api: Mutex::new(api)
+            api: Mutex::new(api),
         }
     }
 }
 
-impl <U: WebDriverExtensionRoute> Handler for HttpHandler<U> {
-    fn handle(&self, req: Request, res: Response) {
+impl<U: ExtensionEndpoint> hyper::server::Handler for HttpHandler<U> {
+    fn handle(&self, req: hyper::server::Request, res: hyper::server::Response) {
         let mut req = req;
         let mut res = res;
 
@@ -179,10 +180,8 @@ impl <U: WebDriverExtensionRoute> Handler for HttpHandler<U> {
                     // The fact that this locks for basically the whole request doesn't
                     // matter as long as we are only handling one request at a time.
                     match self.api.lock() {
-                        Ok(ref api) => {
-                            api.decode_request(req.method, &path[..], &body[..])
-                        },
-                        Err(_) => return
+                        Ok(ref api) => api.decode_request(req.method, &path[..], &body[..]),
+                        Err(_) => return,
                     }
                 };
                 let (status, resp_body) = match msg_result {
@@ -190,32 +189,32 @@ impl <U: WebDriverExtensionRoute> Handler for HttpHandler<U> {
                         let (send_res, recv_res) = channel();
                         match self.chan.lock() {
                             Ok(ref c) => {
-                                let res = c.send(DispatchMessage::HandleWebDriver(message,
-                                                                                  send_res));
+                                let res =
+                                    c.send(DispatchMessage::HandleWebDriver(message, send_res));
                                 match res {
                                     Ok(x) => x,
                                     Err(_) => {
                                         error!("Something terrible happened");
-                                        return
+                                        return;
                                     }
                                 }
-                            },
+                            }
                             Err(_) => {
                                 error!("Something terrible happened");
-                                return
+                                return;
                             }
                         }
                         match recv_res.recv() {
-                            Ok(data) => match data {
-                                Ok(response) => (StatusCode::Ok, response.to_json_string()),
-                                Err(err) => (err.http_status(), err.to_json_string()),
-                            },
-                            Err(e) => panic!("Error reading response: {:?}", e)
+                            Ok(data) => {
+                                match data {
+                                    Ok(response) => (StatusCode::Ok, response.to_json_string()),
+                                    Err(err) => (err.http_status(), err.to_json_string()),
+                                }
+                            }
+                            Err(e) => panic!("Error reading response: {:?}", e),
                         }
-                    },
-                    Err(err) => {
-                        (err.http_status(), err.to_json_string())
                     }
+                    Err(err) => (err.http_status(), err.to_json_string()),
                 };
                 debug!("Returning status {:?}", status);
                 debug!("Returning body {}", resp_body);
@@ -225,7 +224,7 @@ impl <U: WebDriverExtensionRoute> Handler for HttpHandler<U> {
                 }
                 res.headers_mut().set(ContentType::json());
                 res.send(&resp_body.as_bytes()).unwrap();
-            },
+            }
             _ => {}
         }
     }
@@ -234,15 +233,15 @@ impl <U: WebDriverExtensionRoute> Handler for HttpHandler<U> {
 pub fn start<T, U>(address: SocketAddr,
                    handler: T,
                    extension_routes: &[(Method, &str, U)])
-                   -> Result<Listening>
-    where T: 'static + WebDriverHandler<U>,
-          U: 'static + WebDriverExtensionRoute
+                   -> hyper::Result<hyper::server::Listening>
+    where T: 'static + Handler<U>,
+          U: 'static + ExtensionEndpoint
 {
     let (msg_send, msg_recv) = channel();
 
-    let api = WebDriverHttpApi::new(extension_routes);
+    let api = HttpApi::new(extension_routes);
     let http_handler = HttpHandler::new(api, msg_send);
-    let mut server = try!(Server::http(address));
+    let mut server = try!(hyper::server::Server::http(address));
     server.keep_alive(None);
 
     let builder = thread::Builder::new().name("webdriver dispatcher".to_string());

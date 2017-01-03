@@ -2,7 +2,6 @@ use error::WebDriverResult;
 use hyper::method::Method::{Get, Post, Delete};
 use hyper::method::Method;
 use regex::Captures;
-use rustc_serialize::json::Json;
 use super::command::{Command, ExtensionCommand, VoidExtensionCommand};
 
 pub fn standard_endpoints<U:ExtensionEndpoint>() -> Vec<(Method, &'static str, Endpoint<U>)> {
@@ -140,7 +139,7 @@ pub enum Endpoint<U:ExtensionEndpoint> {
 pub trait ExtensionEndpoint : Clone + Send + PartialEq {
     type Command: ExtensionCommand + 'static;
 
-    fn command(&self, &Captures, &Json) -> WebDriverResult<Command<Self::Command>>;
+    fn command(&self, &Captures, &str) -> WebDriverResult<Command<Self::Command>>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -149,7 +148,7 @@ pub struct VoidExtensionEndpoint;
 impl ExtensionEndpoint for VoidExtensionEndpoint {
     type Command = VoidExtensionCommand;
 
-    fn command(&self, _:&Captures, _:&Json) -> WebDriverResult<Command<VoidExtensionCommand>> {
+    fn command(&self, _:&Captures, _:&str) -> WebDriverResult<Command<VoidExtensionCommand>> {
         panic!("No extensions implemented");
     }
 }

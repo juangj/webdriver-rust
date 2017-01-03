@@ -1,45 +1,40 @@
-use rustc_serialize::json;
-
-use protocol::common::{Nullable, Date};
 use cookie;
-use time;
+use protocol::common::Date;
+use serde_json;
+use serde_json::value::Value as Json;
 use std::collections::BTreeMap;
+use time;
 
-#[derive(Debug)]
-pub enum Response {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Response {
+    pub value: ResponseValue
+}
+
+impl Response {
+    pub fn to_json_string(self) -> String {
+        serde_json::to_string(&self).unwrap()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ResponseValue {
+    Generic(Json),
     NewSession(NewSessionResponse),
     DeleteSession,
     WindowSize(WindowSizeResponse),
     WindowPosition(WindowPositionResponse),
     ElementRect(ElementRectResponse),
-    Cookie(CookieResponse),
-    Generic(ValueResponse),
-    Void
+    Cookie(CookieResponse)
 }
 
-impl Response {
-    pub fn to_json_string(self) -> String {
-        match self {
-            Response::NewSession(x) => json::encode(&x),
-            Response::DeleteSession => Ok("{}".to_string()),
-            Response::WindowSize(x) => json::encode(&x),
-            Response::WindowPosition(x) => json::encode(&x),
-            Response::ElementRect(x) => json::encode(&x),
-            Response::Cookie(x) => json::encode(&x),
-            Response::Generic(x) => json::encode(&x),
-            Response::Void => Ok("{}".to_string())
-        }.unwrap()
-    }
-}
-
-#[derive(RustcEncodable, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct NewSessionResponse {
     pub sessionId: String,
-    pub value: json::Json
+    pub value: Json
 }
 
 impl NewSessionResponse {
-    pub fn new(session_id: String, value: json::Json) -> NewSessionResponse {
+    pub fn new(session_id: String, value: Json) -> NewSessionResponse {
         NewSessionResponse {
             value: value,
             sessionId: session_id
@@ -47,20 +42,7 @@ impl NewSessionResponse {
     }
 }
 
-#[derive(RustcEncodable, Debug)]
-pub struct ValueResponse {
-    pub value: json::Json
-}
-
-impl ValueResponse {
-    pub fn new(value: json::Json) -> ValueResponse {
-        ValueResponse {
-            value: value
-        }
-    }
-}
-
-#[derive(RustcEncodable, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct WindowSizeResponse {
     pub width: u64,
     pub height: u64
@@ -75,7 +57,7 @@ impl WindowSizeResponse {
     }
 }
 
-#[derive(RustcEncodable, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct WindowPositionResponse {
     pub x: u64,
     pub y: u64,
@@ -87,7 +69,7 @@ impl WindowPositionResponse {
     }
 }
 
-#[derive(RustcEncodable, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ElementRectResponse {
     pub x: f64,
     pub y: f64,
@@ -107,20 +89,20 @@ impl ElementRectResponse {
 }
 
 //TODO: some of these fields are probably supposed to be optional
-#[derive(RustcEncodable, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Cookie {
     pub name: String,
     pub value: String,
-    pub path: Nullable<String>,
-    pub domain: Nullable<String>,
-    pub expiry: Nullable<Date>,
+    pub path: Option<String>,
+    pub domain: Option<String>,
+    pub expiry: Option<Date>,
     pub secure: bool,
     pub httpOnly: bool
 }
 
 impl Cookie {
-    pub fn new(name: String, value: String, path: Nullable<String>, domain: Nullable<String>,
-               expiry: Nullable<Date>, secure: bool, http_only: bool) -> Cookie {
+    pub fn new(name: String, value: String, path: Option<String>, domain: Option<String>,
+               expiry: Option<Date>, secure: bool, http_only: bool) -> Cookie {
         Cookie {
             name: name,
             value: value,
@@ -138,12 +120,8 @@ impl Into<cookie::Cookie> for Cookie {
         cookie::Cookie {
             name: self.name,
             value: self.value,
-            expires: match self.expiry {
-                Nullable::Value(Date(expiry)) => {
-                    Some(time::at(time::Timespec::new(expiry as i64, 0)))
-                },
-                Nullable::Null => None
-            },
+            expires: self.expiry
+                .map(|Date(expiry)| time::at(time::Timespec::new(expiry as i64, 0))),
             max_age: None,
             domain: self.domain.into(),
             path: self.path.into(),
@@ -154,7 +132,7 @@ impl Into<cookie::Cookie> for Cookie {
     }
 }
 
-#[derive(RustcEncodable, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CookieResponse {
     pub value: Vec<Cookie>
 }

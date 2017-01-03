@@ -1,5 +1,5 @@
 use protocol::common::WebElement;
-use rustc_serialize::json::Json;
+use serde_json::Value as Json;
 use protocol::parameters::{NewSessionParameters, GetParameters, WindowSizeParameters,
                            WindowPositionParameters, SwitchToWindowParameters,
                            SwitchToFrameParameters, LocatorParameters,

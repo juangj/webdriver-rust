@@ -1,6 +1,8 @@
 use hyper::status::StatusCode;
+use hyper::error::Error as HyperError;
 use rustc_serialize::base64::FromBase64Error;
-use rustc_serialize::json::{Json, ToJson, ParserError, DecoderError};
+use serde_json::{Value as Json, Error as JsonError, ErrorCode as JsonErrorCode};
+use serde_json::value::ToJson;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::convert::From;
@@ -162,10 +164,24 @@ impl Error for WebDriverError {
     }
 }
 
-impl From<ParserError> for WebDriverError {
-    fn from(err: ParserError) -> WebDriverError {
-        WebDriverError::new(ErrorStatus::UnknownError,
-            err.description().to_string())
+impl From<JsonError> for WebDriverError {
+    fn from(err: JsonError) -> WebDriverError {
+        match err {
+            JsonError::Syntax(code, _, _) => {
+                let msg = match code {
+                    JsonErrorCode::InvalidType(type_) => format!("Invalid type '{}'", type_),
+                    JsonErrorCode::InvalidValue(value) => format!("Invalid value '{}'", value),
+                    JsonErrorCode::UnknownVariant (name) => format!("Invalid value '{}'", name),
+                    JsonErrorCode::MissingField(name) => format!("Missing field '{}'", name),
+                    _ => err.description().to_string()
+                };
+                WebDriverError::new(ErrorStatus::InvalidArgument, msg)
+            },
+            JsonError::Io(error) => {
+                WebDriverError::new(ErrorStatus::UnknownError,
+                                    err.description().to_string())
+            }
+        }
     }
 }
 
@@ -173,13 +189,6 @@ impl From<IoError> for WebDriverError {
     fn from(err: IoError) -> WebDriverError {
         WebDriverError::new(ErrorStatus::UnknownError,
             err.description().to_string())
-    }
-}
-
-impl From<DecoderError> for WebDriverError {
-    fn from(err: DecoderError) -> WebDriverError {
-        WebDriverError::new(ErrorStatus::UnknownError,
-                            err.description().to_string())
     }
 }
 
@@ -192,6 +201,13 @@ impl From<FromBase64Error> for WebDriverError {
 
 impl From<Box<Error>> for WebDriverError {
     fn from(err: Box<Error>) -> WebDriverError {
+        WebDriverError::new(ErrorStatus::UnknownError,
+                            err.description().to_string())
+    }
+}
+
+impl From<HyperError> for WebDriverError {
+    fn from(err: HyperError) -> WebDriverError {
         WebDriverError::new(ErrorStatus::UnknownError,
                             err.description().to_string())
     }

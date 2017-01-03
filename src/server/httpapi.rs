@@ -86,8 +86,7 @@ impl<U: ExtensionEndpoint> HttpApi<U> {
                     if method_match {
                         return Message::from_http(matcher.match_type.clone(),
                                                   &captures.unwrap(),
-                                                  body,
-                                                  method == Post);
+                                                  body);
                     } else {
                         error = ErrorStatus::UnknownMethod;
                     }

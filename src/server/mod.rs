@@ -8,7 +8,7 @@ use hyper::uri::RequestUri::AbsolutePath;
 use hyper;
 use protocol::command::Command;
 use protocol::endpoints::{ExtensionEndpoint, VoidExtensionEndpoint};
-use protocol::response::Response;
+use protocol::response::{Response, ResponseValue};
 use self::httpapi::HttpApi;
 use self::message::Message;
 use std::io::Read;
@@ -66,18 +66,19 @@ impl<T: Handler<U>, U: ExtensionEndpoint> Dispatcher<T, U> {
                         Ok(_) => self.handler.handle_command(&self.session, msg),
                         Err(e) => Err(e),
                     };
-
-                    match resp {
-                        Ok(Response::NewSession(ref new_session)) => {
-                            self.session = Some(Session::new(new_session.sessionId.clone()));
+                    {
+                        match resp.as_ref().map(|x| &x.value) {
+                            Ok(&ResponseValue::NewSession(ref new_session)) => {
+                                self.session = Some(Session::new(new_session.sessionId.clone()));
+                            }
+                            Ok(&ResponseValue::DeleteSession) => {
+                                self.delete_session();
+                            }
+                            Err(ref x) if x.delete_session() => {
+                                self.delete_session();
+                            }
+                            _ => {}
                         }
-                        Ok(Response::DeleteSession) => {
-                            self.delete_session();
-                        }
-                        Err(ref x) if x.delete_session() => {
-                            self.delete_session();
-                        }
-                        _ => {}
                     }
 
                     if resp_chan.send(resp).is_err() {

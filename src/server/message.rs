@@ -2,8 +2,9 @@ use protocol::command::Command;
 use error::{WebDriverResult, WebDriverError, ErrorStatus};
 use protocol::endpoints::{Endpoint, ExtensionEndpoint, VoidExtensionEndpoint};
 use regex::Captures;
-use rustc_serialize::json::Json;
-use protocol::parameters::{Parameters, NewSessionParameters, GetParameters, WindowSizeParameters,
+use serde_json;
+use serde_json::value::Value as Json;
+use protocol::parameters::{NewSessionParameters, GetParameters, WindowSizeParameters,
                            WindowPositionParameters, SwitchToWindowParameters,
                            SwitchToFrameParameters, LocatorParameters,
                            JavascriptCommandParameters, AddCookieParameters, TimeoutsParameters,
@@ -26,36 +27,17 @@ impl<U: ExtensionEndpoint> Message<U> {
 
     pub fn from_http(match_type: Endpoint<U>,
                      params: &Captures,
-                     body: &str,
-                     requires_body: bool)
+                     body_data: &str)
                      -> WebDriverResult<Message<U>> {
         let session_id = Message::<U>::get_session_id(params);
-        let body_data = if requires_body {
-            debug!("Got request body {}", body);
-            match Json::from_str(body) {
-                Ok(x @ Json::Object(_)) => x,
-                Ok(_) => {
-                    return Err(WebDriverError::new(ErrorStatus::InvalidArgument,
-                                                   "Body was not a json object"))
-                }
-                Err(_) => {
-                    return Err(WebDriverError::new(ErrorStatus::InvalidArgument,
-                                                   format!("Failed to decode request body as \
-                                                            json: {}",
-                                                           body)))
-                }
-            }
-        } else {
-            Json::Null
-        };
         let command = match match_type {
             Endpoint::NewSession => {
-                let parameters: NewSessionParameters = try!(Parameters::from_json(&body_data));
+                let parameters: NewSessionParameters = try!(serde_json::from_str(&body_data));
                 Command::NewSession(parameters)
             }
             Endpoint::DeleteSession => Command::DeleteSession,
             Endpoint::Get => {
-                let parameters: GetParameters = try!(Parameters::from_json(&body_data));
+                let parameters: GetParameters = try!(serde_json::from_str(&body_data));
                 Command::Get(parameters)
             }
             Endpoint::GetCurrentUrl => Command::GetCurrentUrl,
@@ -69,35 +51,35 @@ impl<U: ExtensionEndpoint> Message<U> {
             Endpoint::CloseWindow => Command::CloseWindow,
             Endpoint::GetTimeouts => Command::GetTimeouts,
             Endpoint::SetTimeouts => {
-                let parameters: TimeoutsParameters = try!(Parameters::from_json(&body_data));
+                let parameters: TimeoutsParameters = try!(serde_json::from_str(&body_data));
                 Command::SetTimeouts(parameters)
             }
             Endpoint::GetWindowSize => Command::GetWindowSize,
             Endpoint::SetWindowSize => {
-                let parameters: WindowSizeParameters = try!(Parameters::from_json(&body_data));
+                let parameters: WindowSizeParameters = try!(serde_json::from_str(&body_data));
                 Command::SetWindowSize(parameters)
             }
             Endpoint::GetWindowPosition => Command::GetWindowPosition,
             Endpoint::SetWindowPosition => {
-                let parameters: WindowPositionParameters = try!(Parameters::from_json(&body_data));
+                let parameters: WindowPositionParameters = try!(serde_json::from_str(&body_data));
                 Command::SetWindowPosition(parameters)
             }
             Endpoint::MaximizeWindow => Command::MaximizeWindow,
             Endpoint::SwitchToWindow => {
-                let parameters: SwitchToWindowParameters = try!(Parameters::from_json(&body_data));
+                let parameters: SwitchToWindowParameters = try!(serde_json::from_str(&body_data));
                 Command::SwitchToWindow(parameters)
             }
             Endpoint::SwitchToFrame => {
-                let parameters: SwitchToFrameParameters = try!(Parameters::from_json(&body_data));
+                let parameters: SwitchToFrameParameters = try!(serde_json::from_str(&body_data));
                 Command::SwitchToFrame(parameters)
             }
             Endpoint::SwitchToParentFrame => Command::SwitchToParentFrame,
             Endpoint::FindElement => {
-                let parameters: LocatorParameters = try!(Parameters::from_json(&body_data));
+                let parameters: LocatorParameters = try!(serde_json::from_str(&body_data));
                 Command::FindElement(parameters)
             }
             Endpoint::FindElements => {
-                let parameters: LocatorParameters = try!(Parameters::from_json(&body_data));
+                let parameters: LocatorParameters = try!(serde_json::from_str(&body_data));
                 Command::FindElements(parameters)
             }
             Endpoint::FindElementElement => {
@@ -105,7 +87,7 @@ impl<U: ExtensionEndpoint> Message<U> {
                                           ErrorStatus::InvalidArgument,
                                           "Missing elementId parameter");
                 let element = WebElement::new(element_id.to_string());
-                let parameters: LocatorParameters = try!(Parameters::from_json(&body_data));
+                let parameters: LocatorParameters = try!(serde_json::from_str(&body_data));
                 Command::FindElementElement(element, parameters)
             }
             Endpoint::FindElementElements => {
@@ -113,7 +95,7 @@ impl<U: ExtensionEndpoint> Message<U> {
                                           ErrorStatus::InvalidArgument,
                                           "Missing elementId parameter");
                 let element = WebElement::new(element_id.to_string());
-                let parameters: LocatorParameters = try!(Parameters::from_json(&body_data));
+                let parameters: LocatorParameters = try!(serde_json::from_str(&body_data));
                 Command::FindElementElements(element, parameters)
             }
             Endpoint::GetActiveElement => Command::GetActiveElement,
@@ -218,17 +200,17 @@ impl<U: ExtensionEndpoint> Message<U> {
                                           ErrorStatus::InvalidArgument,
                                           "Missing elementId parameter");
                 let element = WebElement::new(element_id.to_string());
-                let parameters: SendKeysParameters = try!(Parameters::from_json(&body_data));
+                let parameters: SendKeysParameters = try!(serde_json::from_str(&body_data));
                 Command::ElementSendKeys(element, parameters)
             }
             Endpoint::ExecuteScript => {
                 let parameters: JavascriptCommandParameters =
-                    try!(Parameters::from_json(&body_data));
+                    try!(serde_json::from_str(&body_data));
                 Command::ExecuteScript(parameters)
             }
             Endpoint::ExecuteAsyncScript => {
                 let parameters: JavascriptCommandParameters =
-                    try!(Parameters::from_json(&body_data));
+                    try!(serde_json::from_str(&body_data));
                 Command::ExecuteAsyncScript(parameters)
             }
             Endpoint::GetCookies => Command::GetCookies,
@@ -240,7 +222,7 @@ impl<U: ExtensionEndpoint> Message<U> {
                 Command::GetCookie(name)
             }
             Endpoint::AddCookie => {
-                let parameters: AddCookieParameters = try!(Parameters::from_json(&body_data));
+                let parameters: AddCookieParameters = try!(serde_json::from_str(&body_data));
                 Command::AddCookie(parameters)
             }
             Endpoint::DeleteCookies => Command::DeleteCookies,
@@ -252,7 +234,7 @@ impl<U: ExtensionEndpoint> Message<U> {
                 Command::DeleteCookie(name)
             }
             Endpoint::PerformActions => {
-                let parameters: ActionsParameters = try!(Parameters::from_json(&body_data));
+                let parameters: ActionsParameters = try!(serde_json::from_str(&body_data));
                 Command::PerformActions(parameters)
             }
             Endpoint::ReleaseActions => Command::ReleaseActions,
@@ -260,7 +242,7 @@ impl<U: ExtensionEndpoint> Message<U> {
             Endpoint::AcceptAlert => Command::AcceptAlert,
             Endpoint::GetAlertText => Command::GetAlertText,
             Endpoint::SendAlertText => {
-                let parameters: SendKeysParameters = try!(Parameters::from_json(&body_data));
+                let parameters: SendKeysParameters = try!(serde_json::from_str(&body_data));
                 Command::SendAlertText(parameters)
             }
             Endpoint::TakeScreenshot => Command::TakeScreenshot,
@@ -272,7 +254,7 @@ impl<U: ExtensionEndpoint> Message<U> {
                 Command::TakeElementScreenshot(element)
             }
             Endpoint::Status => Command::Status,
-            Endpoint::Extension(ref extension) => try!(extension.command(params, &body_data)),
+            Endpoint::Extension(ref extension) => try!(extension.command(params, body_data)),
         };
         Ok(Message::new(session_id, command))
     }

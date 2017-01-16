@@ -41,7 +41,6 @@ pub struct TimeoutsParameters {
     pub ms: f64,
 }
 
-
 #[derive(PartialEq, Serialize, Deserialize)]
 pub struct WindowSizeParameters {
     pub width: u64,
@@ -82,7 +81,7 @@ pub struct JavascriptCommandParameters {
 }
 
 #[derive(PartialEq, Serialize, Deserialize)]
-pub struct GetCookieParameters {
+pub struct GetNamedCookieParameters {
     pub name: Option<String>,
 }
 
@@ -187,22 +186,18 @@ pub enum GeneralAction {
 
 impl Serialize for GeneralAction {
     fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error> where S: Serializer {
-        let mut state = serializer.serialize_map(Some(3))?;
-        serializer.serialize_map_key(&mut state, "id")?;
-        serializer.serialize_map_value(&mut state, self.id)?;
+        let mut state = serializer.serialize_map(Some(2))?;
         serializer.serialize_map_key(&mut state, "type")?;
-        let type_value = match self.actions {
-            ActionsType::Null(_) => "none",
-            ActionsType::Key(_) => "key",
-            ActionsType::Pointer(_, _) => "pointer",
-        };
-        serializer.serialize_map_value(&mut state, type_value)?;
-        serializer.serialize_map_key(&mut state, "actions")?;
-        serializer.serialize_map_value(&mut state, self.actions)?;
+        serializer.serialize_map_value(&mut state, "none")?;
+        match self {
+            &GeneralAction::Pause(x) => {
+                serializer.serialize_map_key(&mut state, "duration")?;
+                serializer.serialize_map_value(&mut state, x.duration)?;
+            }
+        }
         serializer.serialize_map_end(state)
     }
 }
-
 
 #[derive(PartialEq, Serialize, Deserialize)]
 pub struct PauseAction {
@@ -216,6 +211,26 @@ pub enum KeyAction {
     Down(KeyDownAction),
 }
 
+impl Serialize for KeyAction {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error> where S: Serializer {
+        let mut state = serializer.serialize_map(Some(2))?;
+        serializer.serialize_map_key(&mut state, "type")?;
+        match self {
+            &KeyAction::Up(x) => {
+                serializer.serialize_map_value(&mut state, "keyUp")?;
+                serializer.serialize_map_key(&mut state, "value")?;
+                serializer.serialize_map_value(&mut state, x.value)?;
+            }
+            &KeyAction::Down(x) => {
+                serializer.serialize_map_value(&mut state, "keyDown")?;
+                serializer.serialize_map_key(&mut state, "value")?;
+                serializer.serialize_map_value(&mut state, x.value)?;
+            }
+        };
+        serializer.serialize_map_end(state)
+    }
+}
+
 #[derive(PartialEq, Serialize, Deserialize)]
 pub struct KeyUpAction {
     pub value: char,
@@ -226,13 +241,48 @@ pub struct KeyDownAction {
     pub value: char,
 }
 
-#[derive(PartialEq, Serialize, Deserialize)]
+#[derive(PartialEq, Deserialize)]
 // TODO custom (de)serialization with a type field
 pub enum PointerAction {
     Up(PointerUpAction),
     Down(PointerDownAction),
     Move(PointerMoveAction),
     Cancel,
+}
+
+impl Serialize for PointerAction {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error> where S: Serializer {
+        let mut state = serializer.serialize_map(Some(6))?;
+        serializer.serialize_map_key(&mut state, "type")?;
+        match self {
+            &PointerAction::Up(x) => {
+                serializer.serialize_map_value(&mut state, "pointerUp")?;
+                serializer.serialize_map_key(&mut state, "button")?;
+                serializer.serialize_map_value(&mut state, x.button)?;
+            }
+            &PointerAction::Down(x) => {
+                serializer.serialize_map_value(&mut state, "pointerDown")?;
+                serializer.serialize_map_key(&mut state, "button")?;
+                serializer.serialize_map_value(&mut state, x.button)?;
+            }
+            &PointerAction::Move(x) => {
+                serializer.serialize_map_value(&mut state, "pointerMove")?;
+                serializer.serialize_map_key(&mut state, "duration")?;
+                serializer.serialize_map_value(&mut state, x.duration)?;
+                serializer.serialize_map_key(&mut state, "element")?;
+                serializer.serialize_map_value(&mut state, x.element)?;
+                serializer.serialize_map_key(&mut state, "x")?;
+                serializer.serialize_map_value(&mut state, x.x)?;
+                serializer.serialize_map_key(&mut state, "y")?;
+                serializer.serialize_map_value(&mut state, x.y)?;
+            }
+            &PointerAction::Cancel => {
+                serializer.serialize_map_value(&mut state, "pointerCancel")?;
+            }
+
+        };
+        serializer.serialize_map_end(state)
+    }
 }
 
 #[derive(PartialEq, Serialize, Deserialize)]
@@ -249,6 +299,6 @@ pub struct PointerDownAction {
 pub struct PointerMoveAction {
     pub duration: Option<u64>,
     pub element: Option<WebElement>,
-    pub x: Option<u64>,
-    pub y: Option<u64>,
+    pub x: Option<i64>,
+    pub y: Option<i64>,
 }

@@ -46,7 +46,7 @@ pub enum Command<T: ExtensionCommand> {
     ExecuteScript(JavascriptCommandParameters),
     ExecuteAsyncScript(JavascriptCommandParameters),
     GetCookies,
-    GetCookie(String),
+    GetNamedCookie(String),
     AddCookie(AddCookieParameters),
     DeleteCookies,
     DeleteCookie(String),

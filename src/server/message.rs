@@ -214,12 +214,12 @@ impl<U: ExtensionEndpoint> Message<U> {
                 Command::ExecuteAsyncScript(parameters)
             }
             Endpoint::GetCookies => Command::GetCookies,
-            Endpoint::GetCookie => {
+            Endpoint::GetNamedCookie => {
                 let name = try_opt!(params.name("name"),
                                     ErrorStatus::InvalidArgument,
                                     "Missing name parameter")
                     .to_string();
-                Command::GetCookie(name)
+                Command::GetNamedCookie(name)
             }
             Endpoint::AddCookie => {
                 let parameters: AddCookieParameters = try!(serde_json::from_str(&body_data));

@@ -16,7 +16,6 @@ extern crate time;
 extern crate url;
 
 #[macro_use] pub mod macros;
-pub mod client;
 pub mod protocol;
 pub mod error;
 pub mod server;
